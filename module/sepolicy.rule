@@ -1,0 +1,9 @@
+# frida-server runs in the su context (started by service.sh as root).
+# Base KernelSU su domain already allows most of what a root daemon needs;
+# these rules cover the frida-specific gaps: ptracing app processes and
+# serving the 27042 TCP endpoint to local clients.
+allow su self capability { sys_ptrace net_bind_service }
+allow su self process { ptrace signal_perms }
+allow su self tcp_socket { create bind listen accept read write getattr setattr getopt setopt shutdown }
+allow su appdomain process { ptrace signal }
+allow su untrusted_app process { ptrace signal }

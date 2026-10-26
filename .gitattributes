@@ -1,0 +1,11 @@
+# Flashable module scripts MUST stay LF even on Windows checkouts.
+module/** text eol=lf
+*.sh text eol=lf
+*.prop text eol=lf
+*.rule text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.zip binary

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>frida-ksu</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: monospace; background: #111; color: #e0e0e0; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .sub { color: #888; font-size: 12px; margin-bottom: 16px; }
+  .card { background: #1c1c1c; border: 1px solid #333; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
+  .k { color: #888; } .v { color: #fff; }
+  .ok { color: #4caf50; font-weight: bold; } .bad { color: #f44336; font-weight: bold; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { flex: 1 1 30%; padding: 10px 4px; border-radius: 8px; border: 1px solid #444;
+           background: #2a2a2a; color: #fff; font-family: monospace; font-size: 13px; }
+  button:active { background: #3a3a3a; }
+  button.warn { border-color: #7a4a00; } button.go { border-color: #1b5e20; }
+  input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #444;
+          background: #111; color: #fff; font-family: monospace; font-size: 13px; margin-bottom: 8px; }
+  pre { background: #0a0a0a; border: 1px solid #333; border-radius: 8px; padding: 10px;
+        font-size: 11px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  .art { color: #888; font-size: 10px; line-height: 1.2; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<pre class="art">   ▄██▄    reverser.id
+ ▄██████▄  frida-ksu</pre>
+<h1>frida-ksu</h1>
+<div class="sub">frida-server manager</div>
+
+<div class="card" id="status">
+  <div class="row"><span class="k">installed</span><span class="v" id="s-ver">…</span></div>
+  <div class="row"><span class="k">upstream</span><span class="v" id="s-latest">…</span></div>
+  <div class="row"><span class="k">daemon</span><span class="v" id="s-run">…</span></div>
+  <div class="row"><span class="k">listening</span><span class="v" id="s-listen">…</span></div>
+</div>
+
+<div class="card">
+  <div class="btns">
+    <button class="go" onclick="svc('start')">start</button>
+    <button class="warn" onclick="svc('stop')">stop</button>
+    <button onclick="svc('restart')">restart</button>
+    <button class="go" onclick="update()">update</button>
+    <button onclick="refresh()">refresh</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="row"><span class="k">listen address</span></div>
+  <input id="listen" placeholder="127.0.0.1:27042">
+  <div class="btns"><button onclick="saveListen()">save + restart</button></div>
+</div>
+
+<div class="card">
+  <div class="row"><span class="k">log</span><span class="k" onclick="loadLog()">tap to reload</span></div>
+  <pre id="log">…</pre>
+</div>
+
+<pre id="out"></pre>
+
+<script>
+var MOD = '/data/adb/modules/frida-ksu';
+var K = (window.kernelsu) || null;
+function toast(m) { if (K && K.toast) { try { K.toast(m); } catch (e) {} } }
+function sh(cmd) {
+  if (!K || !K.exec) return null;
+  try {
+    var r = K.exec(cmd);
+    if (typeof r === 'string') return r;
+    return (r && r.stdout !== undefined) ? r.stdout : '';
+  } catch (e) { return null; }
+}
+function say(t) { document.getElementById('out').textContent = t; }
+
+function refresh() {
+  if (!K) { say('no kernelsu bridge (open in manager WebUI)'); return; }
+  var ver = sh('cat ' + MOD + '/version 2>/dev/null') || 'unknown';
+  var ps = sh('ps -o args 2>/dev/null | grep "[f]rida-server"') || '';
+  var listen = sh('cat ' + MOD + '/listen_addr 2>/dev/null') || '127.0.0.1:27042';
+  document.getElementById('s-ver').textContent = ('' + ver).trim();
+  document.getElementById('s-run').innerHTML = ps.trim()
+    ? '<span class="ok">RUNNING</span>' : '<span class="bad">STOPPED</span>';
+  document.getElementById('s-listen').textContent = ('' + listen).trim();
+  document.getElementById('listen').value = ('' + listen).trim();
+  latest();
+  loadLog();
+}
+function latest() {
+  document.getElementById('s-latest').textContent = 'checking…';
+  var t = sh('curl -fsSL --connect-timeout 10 ' +
+    'https://api.github.com/repos/frida/frida/releases/latest 2>/dev/null | grep tag_name');
+  var m = t && t.match(/"tag_name":\s*"v?([^"]+)"/);
+  document.getElementById('s-latest').textContent = m ? m[1] : 'offline';
+}
+function svc(op) {
+  toast(op + '…');
+  if (op === 'stop') sh('pkill -f frida-server');
+  else sh('sh ' + MOD + '/service.sh');
+  setTimeout(refresh, 1500);
+}
+function update() {
+  say('updating, may take a while on slow networks…');
+  toast('updating frida-server…');
+  var out = sh('sh ' + MOD + '/action.sh');
+  say(out || '(no output)');
+  refresh();
+}
+function saveListen() {
+  var v = document.getElementById('listen').value.trim();
+  if (!/^[0-9.]+:\d+$/.test(v)) { toast('bad address, want ip:port'); return; }
+  sh("echo -n '" + v + "' > " + MOD + '/listen_addr');
+  sh('sh ' + MOD + '/service.sh');
+  toast('saved, daemon restarted');
+  setTimeout(refresh, 1500);
+}
+function loadLog() {
+  var t = sh('tail -n 60 /data/adb/frida-ksu/frida.log 2>/dev/null');
+  document.getElementById('log').textContent = (t && ('' + t).trim()) || '(empty)';
+}
+refresh();
+</script>
+</body>
+</html>

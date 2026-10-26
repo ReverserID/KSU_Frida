@@ -1,0 +1,7 @@
+id=frida-ksu
+name=Frida Server (KernelSU)
+version=v17.24.3
+versionCode=172403
+author=reverser.id
+description=Frida server as root daemon by reverser.id (auto latest on install, Action checks updates). Listens on 27042.
+updateJson=https://raw.githubusercontent.com/ReverserID/KSU_Frida/main/update.json
