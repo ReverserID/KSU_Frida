@@ -33,6 +33,7 @@
 <div class="sub">frida-server manager</div>
 
 <div class="card" id="status">
+  <div class="row"><span class="k">bridge</span><span class="v" id="s-bridge">…</span></div>
   <div class="row"><span class="k">installed</span><span class="v" id="s-ver">…</span></div>
   <div class="row"><span class="k">upstream</span><span class="v" id="s-latest">…</span></div>
   <div class="row"><span class="k">daemon</span><span class="v" id="s-run">…</span></div>
@@ -64,62 +65,111 @@
 
 <script>
 var MOD = '/data/adb/modules/frida-ksu';
-var K = (window.kernelsu) || null;
+// Stock manager injects window.kernelsu; forks/wrappers use other names.
+var BRIDGE = (function () {
+  var names = ['kernelsu', 'mmrl', 'apatch', 'KernelSU', 'ksu'];
+  for (var i = 0; i < names.length; i++) {
+    var a = window[names[i]];
+    if (a && a.exec) return { name: names[i], api: a };
+  }
+  return null;
+})();
+var K = BRIDGE ? BRIDGE.api : null;
+var KNAME = BRIDGE ? BRIDGE.name : 'missing';
 function toast(m) { if (K && K.toast) { try { K.toast(m); } catch (e) {} } }
-function sh(cmd) {
-  if (!K || !K.exec) return null;
-  try {
-    var r = K.exec(cmd);
-    if (typeof r === 'string') return r;
-    return (r && r.stdout !== undefined) ? r.stdout : '';
-  } catch (e) { return null; }
-}
 function say(t) { document.getElementById('out').textContent = t; }
+// Works with every bridge shape: sync string, sync {errno,stdout},
+// or Promise of either (some managers resolve async).
+function sh(cmd) {
+  if (!K || !K.exec) return Promise.resolve(null);
+  var r;
+  try { r = K.exec(cmd); } catch (e) { return Promise.resolve('ERR:' + e); }
+  return Promise.resolve(r).then(function (v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'string') return v;
+    if (typeof v === 'object') {
+      if (typeof v.stdout === 'string') return v.stdout;
+      if (typeof v.result === 'string') return v.result;
+      if (typeof v.output === 'string') return v.output;
+      try { return JSON.stringify(v); } catch (e) { return '' + v; }
+    }
+    return '' + v;
+  }, function (e) { return 'ERR:' + e; });
+}
 
 function refresh() {
-  if (!K) { say('no kernelsu bridge (open in manager WebUI)'); return; }
-  var ver = sh('cat ' + MOD + '/version 2>/dev/null') || 'unknown';
-  var ps = sh('ps -o args 2>/dev/null | grep "[f]rida-server"') || '';
-  var listen = sh('cat ' + MOD + '/listen_addr 2>/dev/null') || '127.0.0.1:27042';
-  document.getElementById('s-ver').textContent = ('' + ver).trim();
-  document.getElementById('s-run').innerHTML = ps.trim()
-    ? '<span class="ok">RUNNING</span>' : '<span class="bad">STOPPED</span>';
-  document.getElementById('s-listen').textContent = ('' + listen).trim();
-  document.getElementById('listen').value = ('' + listen).trim();
-  latest();
-  loadLog();
+  if (!K || !K.exec) {
+    say('no kernelsu bridge (open in manager WebUI)');
+    var names = [];
+    for (var k in window) { try { if (window[k] && window[k].exec) names.push(k); } catch (e) {} }
+    document.getElementById('s-bridge').textContent =
+      'missing (exec in: ' + (names.join(',') || 'none') + ')';
+    return;
+  }
+  document.getElementById('s-bridge').textContent = KNAME + ' probing…';
+  sh('echo bridge-ok').then(function (probe) {
+    var ok = ('' + probe).trim() === 'bridge-ok';
+    var el = document.getElementById('s-bridge');
+    el.innerHTML = ok ? '<span class="ok">' + KNAME + ' OK</span>'
+      : '<span class="bad">WEIRD</span>';
+    if (!ok) { say('bridge probe: ' + probe); return; }
+    say('');
+    return sh('cat ' + MOD + '/version 2>/dev/null').then(function (ver) {
+      document.getElementById('s-ver').textContent = ('' + (ver || 'unknown')).trim();
+      return sh('P=$(cat /data/adb/frida-ksu/frida.pid 2>/dev/null); ' +
+        'if [ -n "$P" ] && tr "\\0" " " </proc/$P/cmdline 2>/dev/null | grep -q frida-server; ' +
+        'then echo "PID:$P"; ' +
+        'else ps -A 2>/dev/null | grep "[f]rida-server" || ps 2>/dev/null | grep "[f]rida-server"; fi');
+    }).then(function (ps) {
+      ps = '' + (ps || '');
+      var running = /PID:\d+/.test(ps) || /[f]rida-server/.test(ps);
+      document.getElementById('s-run').innerHTML = running
+        ? '<span class="ok">RUNNING</span>' : '<span class="bad">STOPPED</span>';
+      return sh('cat ' + MOD + '/listen_addr 2>/dev/null');
+    }).then(function (listen) {
+      listen = ('' + (listen || '127.0.0.1:27042')).trim();
+      document.getElementById('s-listen').textContent = listen;
+      document.getElementById('listen').value = listen;
+      latest();
+      loadLog();
+    });
+  });
 }
 function latest() {
   document.getElementById('s-latest').textContent = 'checking…';
-  var t = sh('curl -fsSL --connect-timeout 10 ' +
-    'https://api.github.com/repos/frida/frida/releases/latest 2>/dev/null | grep tag_name');
-  var m = t && t.match(/"tag_name":\s*"v?([^"]+)"/);
-  document.getElementById('s-latest').textContent = m ? m[1] : 'offline';
+  sh('(curl -fsSL --connect-timeout 10 https://api.github.com/repos/frida/frida/releases/latest || wget -qO- --timeout=10 https://api.github.com/repos/frida/frida/releases/latest) 2>/dev/null | grep tag_name'
+  ).then(function (t) {
+    var m = ('' + (t || '')).match(/"tag_name":\s*"v?([^"]+)"/);
+    document.getElementById('s-latest').textContent = m ? m[1] : 'offline';
+  });
 }
 function svc(op) {
   toast(op + '…');
-  if (op === 'stop') sh('pkill -f frida-server');
-  else sh('sh ' + MOD + '/service.sh');
-  setTimeout(refresh, 1500);
+  sh(op === 'stop' ? 'pkill -f frida-server' : 'sh ' + MOD + '/service.sh')
+    .then(function () { setTimeout(refresh, 1500); });
 }
 function update() {
   say('updating, may take a while on slow networks…');
   toast('updating frida-server…');
-  var out = sh('sh ' + MOD + '/action.sh');
-  say(out || '(no output)');
-  refresh();
+  sh('sh ' + MOD + '/action.sh').then(function (out) {
+    say(out || '(no output)');
+    refresh();
+  });
 }
 function saveListen() {
   var v = document.getElementById('listen').value.trim();
   if (!/^[0-9.]+:\d+$/.test(v)) { toast('bad address, want ip:port'); return; }
-  sh("echo -n '" + v + "' > " + MOD + '/listen_addr');
-  sh('sh ' + MOD + '/service.sh');
-  toast('saved, daemon restarted');
-  setTimeout(refresh, 1500);
+  sh("echo -n '" + v + "' > " + MOD + '/listen_addr').then(function () {
+    return sh('sh ' + MOD + '/service.sh');
+  }).then(function () {
+    toast('saved, daemon restarted');
+    setTimeout(refresh, 1500);
+  });
 }
 function loadLog() {
-  var t = sh('tail -n 60 /data/adb/frida-ksu/frida.log 2>/dev/null');
-  document.getElementById('log').textContent = (t && ('' + t).trim()) || '(empty)';
+  sh('tail -n 60 /data/adb/frida-ksu/frida.log 2>/dev/null').then(function (t) {
+    document.getElementById('log').textContent = (t && ('' + t).trim()) || '(empty)';
+  });
 }
 refresh();
 </script>
