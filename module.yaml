@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
+schemaVersion: 1
+id: frida-ksu
+name: Frida Server (KernelSU)
+summary: Frida server as a root daemon with auto-update and WebUI, by reverser.id
+description: README.md
+homepage: https://github.com/ReverserID/KSU_Frida
+support: https://github.com/ReverserID/KSU_Frida/issues
+tags: [frida, tools, debug]
+authors:
+  - name: reverser.id
+    url: https://github.com/ReverserID
+compatibility:
+  androidMinApi: 26
+  architectures: [arm64-v8a, armeabi-v7a, x86_64, x86]
+release:
+  assetPattern: "frida-ksu-*.zip"
