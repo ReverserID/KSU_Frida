@@ -5,6 +5,7 @@ name: Frida Server (KernelSU)
 summary: Frida server as a root daemon with auto-update and WebUI, by reverser.id
 description: README.md
 homepage: https://github.com/ReverserID/KSU_Frida
+icon: assets/icon.png
 support: https://github.com/ReverserID/KSU_Frida/issues
 tags: [frida, tools, debug]
 authors:

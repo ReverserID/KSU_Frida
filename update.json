@@ -1,6 +1,6 @@
 {
   "version": "v17.24.3",
-  "versionCode": 172403,
+  "versionCode": 172404,
   "zipUrl": "https://raw.githubusercontent.com/ReverserID/KSU_Frida/main/dist/frida-ksu-17.24.3.zip",
   "changelog": "https://github.com/frida/frida/releases/tag/17.24.3"
 }

@@ -53,7 +53,8 @@ def check(prop):
     for fn in ("customize.sh", "service.sh", "action.sh", "uninstall.sh",
                "lib.sh", "sepolicy.rule", "module.prop", "listen_addr",
                "banner.txt",
-               "webroot/index.html"):
+               "webroot/index.html",
+               "webroot/icon.png"):
         p = os.path.join(MOD, fn)
         if not os.path.isfile(p):
             errors.append(f"missing {fn}")
