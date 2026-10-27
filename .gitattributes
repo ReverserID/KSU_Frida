@@ -9,3 +9,4 @@ module/** text eol=lf
 *.md text eol=lf
 *.txt text eol=lf
 *.zip binary
+*.png binary
